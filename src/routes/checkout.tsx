@@ -7,6 +7,7 @@ import { useStore } from "@/lib/store";
 import { supabase } from "@/lib/supabaseClient";
 
 const TILL_NUMBER = "123456";
+const LS_KEY = "crunchyinn_order_ids";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,21 @@ type DeliveryTier = {
   max_distance_km: number;
   fee: number;
 };
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+function saveOrderId(orderId: string) {
+  try {
+    const existing: string[] = JSON.parse(
+      localStorage.getItem(LS_KEY) ?? "[]"
+    );
+    if (!existing.includes(orderId)) {
+      localStorage.setItem(LS_KEY, JSON.stringify([orderId, ...existing]));
+    }
+  } catch {
+    // localStorage unavailable — silently skip
+  }
+}
 
 // ── route ─────────────────────────────────────────────────────────────────────
 
@@ -83,11 +99,11 @@ function CheckoutPage() {
     setSubmitting(true);
     setError(null);
 
-    // 1. Insert the order — generate id client-side to avoid chaining .select()
-    //    which triggers a SELECT that the anon RLS policy blocks.
+    // 1. Insert the order
     const orderId = crypto.randomUUID();
 
-    const { error: orderError } = await (supabase.from("orders") as any)
+    const { error: orderError } = await (supabase
+      .from("orders") as any)
       .insert({
         id: orderId,
         customer_name: name.trim(),
@@ -107,17 +123,18 @@ function CheckoutPage() {
       return;
     }
 
-    // 2. Insert order_items — cast numerics explicitly to avoid type coercion errors
+    // 2. Insert order_items
     const items = cart.map((c) => ({
       order_id: orderId,
       food_id: String(c.food.id),
       food_name: String(c.food.name),
       food_price: Number(c.food.price),
       quantity: Number(c.qty),
-      // item_total is a generated column (food_price * quantity) — Postgres computes it
     }));
 
-    const { error: itemsError } = await (supabase.from("order_items") as any).insert(items);
+    const { error: itemsError } = await (supabase
+      .from("order_items") as any)
+      .insert(items);
 
     if (itemsError) {
       console.error("order_items insert error:", itemsError);
@@ -126,7 +143,11 @@ function CheckoutPage() {
       return;
     }
 
-    // 3. Clear local cart and navigate to order tracking
+    // 3. Persist this orderId so /orders loads it automatically on next visit
+    //    without requiring a phone lookup.
+    saveOrderId(orderId);
+
+    // 4. Clear cart and go straight to the live order tracking page
     clearCart();
     navigate({ to: "/orders/$orderId", params: { orderId } });
   };
@@ -134,7 +155,6 @@ function CheckoutPage() {
   return (
     <PageShell>
       <h1 className="mb-6 text-3xl font-bold md:text-4xl">Checkout</h1>
-      {/* no <form> wrapper — using div + button onClick per project convention */}
       <div className="grid gap-6 md:grid-cols-[1fr,360px]">
         <div className="space-y-5">
 
@@ -142,7 +162,12 @@ function CheckoutPage() {
           <Section icon={<User className="h-4 w-4" />} title="Contact">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Full name" value={name} onChange={setName} placeholder="Jane Doe" />
-              <Field label="Phone number" value={phone} onChange={setPhone} placeholder="+254 700 000 000" />
+              <Field
+                label="Phone number"
+                value={phone}
+                onChange={setPhone}
+                placeholder="+254 700 000 000"
+              />
             </div>
           </Section>
 
@@ -157,7 +182,9 @@ function CheckoutPage() {
 
             {/* Delivery tier picker */}
             <div className="mt-4">
-              <p className="mb-2 text-xs font-semibold text-muted-foreground">Delivery zone</p>
+              <p className="mb-2 text-xs font-semibold text-muted-foreground">
+                Delivery zone
+              </p>
               {tiersLoading ? (
                 <div className="h-10 animate-pulse rounded-xl bg-muted" />
               ) : (
@@ -174,7 +201,9 @@ function CheckoutPage() {
                       }`}
                     >
                       <p className="font-semibold">{t.label}</p>
-                      <p className="text-xs">Up to {t.max_distance_km} km · {formatPrice(t.fee)}</p>
+                      <p className="text-xs">
+                        Up to {t.max_distance_km} km · {formatPrice(t.fee)}
+                      </p>
                     </button>
                   ))}
                 </div>
@@ -196,13 +225,16 @@ function CheckoutPage() {
                 {formatPrice(total)}
               </p>
               <p className="mt-1 text-xs text-green-600 dark:text-green-500">
-                Complete the M-Pesa payment, then tap "Place order" below. Our team will confirm once we receive it.
+                Complete the M-Pesa payment, then tap "Place order" below. Our
+                team will confirm once we receive it.
               </p>
             </div>
           </Section>
 
           {error && (
-            <p className="rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</p>
+            <p className="rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {error}
+            </p>
           )}
         </div>
 
@@ -211,18 +243,26 @@ function CheckoutPage() {
           <h2 className="text-lg font-bold">Your order</h2>
           <div className="mt-4 space-y-2">
             {cart.map((c) => (
-              <div key={c.food.id} className="flex items-center justify-between text-sm">
+              <div
+                key={c.food.id}
+                className="flex items-center justify-between text-sm"
+              >
                 <span className="truncate">
                   <span className="font-bold">{c.qty}×</span> {c.food.name}
                 </span>
-                <span className="font-semibold">{formatPrice(c.food.price * c.qty)}</span>
+                <span className="font-semibold">
+                  {formatPrice(c.food.price * c.qty)}
+                </span>
               </div>
             ))}
           </div>
           <div className="my-4 border-t border-border" />
           <div className="space-y-2 text-sm">
             <Row label="Subtotal" value={formatPrice(subtotal)} />
-            <Row label="Delivery" value={tiersLoading ? "—" : formatPrice(deliveryFee)} />
+            <Row
+              label="Delivery"
+              value={tiersLoading ? "—" : formatPrice(deliveryFee)}
+            />
             <div className="my-2 border-t border-border" />
             <Row label="Total" value={formatPrice(total)} bold />
           </div>
@@ -242,11 +282,21 @@ function CheckoutPage() {
 
 // ── small shared components ───────────────────────────────────────────────────
 
-function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+function Section({
+  icon,
+  title,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-3xl bg-card p-5 shadow-soft">
       <div className="mb-4 flex items-center gap-2">
-        <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 text-primary">{icon}</span>
+        <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 text-primary">
+          {icon}
+        </span>
         <h3 className="font-bold">{title}</h3>
       </div>
       {children}
@@ -254,7 +304,12 @@ function Section({ icon, title, children }: { icon: React.ReactNode; title: stri
   );
 }
 
-function Field({ label, value, onChange, placeholder }: {
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
   label: string;
   value: string;
   onChange: (v: string) => void;
@@ -262,7 +317,9 @@ function Field({ label, value, onChange, placeholder }: {
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-semibold text-muted-foreground">{label}</span>
+      <span className="mb-1 block text-xs font-semibold text-muted-foreground">
+        {label}
+      </span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -273,7 +330,15 @@ function Field({ label, value, onChange, placeholder }: {
   );
 }
 
-function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
+function Row({
+  label,
+  value,
+  bold,
+}: {
+  label: string;
+  value: string;
+  bold?: boolean;
+}) {
   return (
     <div className={`flex justify-between ${bold ? "text-lg font-bold" : ""}`}>
       <span className={bold ? "" : "text-muted-foreground"}>{label}</span>

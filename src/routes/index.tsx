@@ -179,7 +179,7 @@ function Home() {
               </div>
               <div className="flex items-center gap-1.5">
                 <Truck className="h-3.5 w-3.5 shrink-0 text-accent" />
-                Free over KES 2,500
+                Free over KES 500
               </div>
               <div className="flex items-center gap-1.5">
                 <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-accent" />

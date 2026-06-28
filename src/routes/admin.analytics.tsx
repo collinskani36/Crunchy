@@ -1,14 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { formatPrice } from "@/lib/data";
+import { formatPrice } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 
 export const Route = createFileRoute("/admin/analytics")({
   component: AdminAnalytics,
 });
 
-type Bucket = { label: string; total: number };
+type Bucket = { label: string; dateKey: string; total: number };
 type TopItem = { id: string; name: string; image_url: string | null; qty: number };
+
+type OrderRow = { total: number | null; created_at: string };
+type OrderItemRow = { food_id: string; food_name: string; quantity: number };
+type FoodRow = { id: string; image_url: string | null };
 
 async function fetchAnalytics(): Promise<{ buckets: Bucket[]; top: TopItem[] }> {
   const days = 7;
@@ -18,28 +22,34 @@ async function fetchAnalytics(): Promise<{ buckets: Bucket[]; top: TopItem[] }> 
     supabase
       .from("orders")
       .select("total, created_at")
-      .gte("created_at", since),
+      .gte("created_at", since)
+      .returns<OrderRow[]>(),
     supabase
       .from("order_items")
       .select("food_id, food_name, quantity")
-      .gte("created_at", since),
+      .gte("created_at", since)
+      .returns<OrderItemRow[]>(),
   ]);
 
   if (ordersRes.error) throw ordersRes.error;
   if (itemsRes.error) throw itemsRes.error;
 
-  // Build day buckets
-  const now = Date.now();
+  // Build day buckets keyed by local calendar date (YYYY-MM-DD)
   const buckets: Bucket[] = Array.from({ length: days }, (_, i) => {
-    const dayStart = now - (days - 1 - i) * 86_400_000;
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - (days - 1 - i));
     return {
-      label: new Date(dayStart).toLocaleDateString(undefined, { weekday: "short" }),
+      label: d.toLocaleDateString(undefined, { weekday: "short" }),
+      dateKey: d.toLocaleDateString("en-CA"),
       total: 0,
     };
   });
+
   for (const o of ordersRes.data ?? []) {
-    const diff = Math.floor((now - new Date(o.created_at).getTime()) / 86_400_000);
-    if (diff < days) buckets[days - 1 - diff].total += o.total ?? 0;
+    const dateKey = new Date(o.created_at).toLocaleDateString("en-CA");
+    const bucket = buckets.find((b) => b.dateKey === dateKey);
+    if (bucket) bucket.total += o.total ?? 0;
   }
 
   // Build top sellers
@@ -50,7 +60,6 @@ async function fetchAnalytics(): Promise<{ buckets: Bucket[]; top: TopItem[] }> 
     countMap.set(it.food_id, cur);
   }
 
-  // Fetch image_url for top food ids
   const sorted = [...countMap.entries()]
     .sort((a, b) => b[1].qty - a[1].qty)
     .slice(0, 5);
@@ -59,7 +68,8 @@ async function fetchAnalytics(): Promise<{ buckets: Bucket[]; top: TopItem[] }> 
   const { data: foodRows } = await supabase
     .from("foods")
     .select("id, image_url")
-    .in("id", foodIds);
+    .in("id", foodIds)
+    .returns<FoodRow[]>();
 
   const imageMap = new Map((foodRows ?? []).map((f) => [f.id, f.image_url]));
 
@@ -72,6 +82,8 @@ async function fetchAnalytics(): Promise<{ buckets: Bucket[]; top: TopItem[] }> 
 
   return { buckets, top };
 }
+
+const CHART_HEIGHT = 160; // px — the drawable bar area
 
 function AdminAnalytics() {
   const [buckets, setBuckets] = useState<Bucket[]>([]);
@@ -96,6 +108,10 @@ function AdminAnalytics() {
   }, []);
 
   const max = Math.max(1, ...buckets.map((b) => b.total));
+  const sqrtMax = Math.sqrt(max);
+  // sqrt scale so small days still show a visible bar
+  const barPx = (total: number) =>
+    total === 0 ? 4 : Math.max(12, (Math.sqrt(total) / sqrtMax) * CHART_HEIGHT);
 
   return (
     <div className="space-y-6">
@@ -113,17 +129,25 @@ function AdminAnalytics() {
         <>
           <div className="rounded-3xl bg-card p-6 shadow-soft">
             <h2 className="font-bold">Revenue · last 7 days</h2>
-            <div className="mt-6 flex h-48 items-end gap-3">
+            {/* Fixed-height container; bars are absolute-height px so % has a real parent */}
+            <div className="mt-6 flex items-end gap-3" style={{ height: `${CHART_HEIGHT}px` }}>
               {buckets.map((b, i) => (
-                <div key={i} className="flex flex-1 flex-col items-center gap-2">
-                  <div className="relative flex w-full flex-1 items-end">
-                    <div
-                      className="w-full rounded-t-xl bg-gradient-hero transition-all"
-                      style={{ height: `${(b.total / max) * 100}%`, minHeight: "8px" }}
-                    />
-                  </div>
+                <div key={i} className="flex flex-1 flex-col items-center gap-0">
+                  <div
+                    className="w-full rounded-t-xl bg-gradient-hero transition-all duration-500"
+                    style={{ height: `${barPx(b.total)}px` }}
+                  />
+                </div>
+              ))}
+            </div>
+            {/* Labels row below chart */}
+            <div className="mt-2 flex gap-3">
+              {buckets.map((b, i) => (
+                <div key={i} className="flex flex-1 flex-col items-center gap-1">
                   <span className="text-xs font-semibold text-muted-foreground">{b.label}</span>
-                  <span className="text-[10px] text-muted-foreground">{formatPrice(b.total)}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {b.total > 0 ? formatPrice(b.total) : "—"}
+                  </span>
                 </div>
               ))}
             </div>

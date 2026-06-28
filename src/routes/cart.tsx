@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import { PageShell } from "@/components/PageShell";
 import { formatPrice } from "@/lib/utils";
-import { DELIVERY, useStore } from "@/lib/store";
+import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/cart")({
   head: () => ({ meta: [{ title: "Your cart — Crunchy Inn" }] }),
@@ -14,7 +14,6 @@ function CartPage() {
   const setQty = useStore((s) => s.setQty);
   const removeFromCart = useStore((s) => s.removeFromCart);
   const subtotal = cart.reduce((s, c) => s + c.food.price * c.qty, 0);
-  const total = subtotal + (cart.length ? DELIVERY : 0);
 
   if (cart.length === 0) {
     return (
@@ -91,15 +90,12 @@ function CartPage() {
               <span className="text-muted-foreground">Subtotal</span>
               <span className="font-semibold">{formatPrice(subtotal)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Delivery</span>
-              <span className="font-semibold">{formatPrice(DELIVERY)}</span>
-            </div>
             <div className="my-3 border-t border-border" />
             <div className="flex justify-between text-lg font-bold">
               <span>Total</span>
-              <span>{formatPrice(total)}</span>
+              <span>{formatPrice(subtotal)}</span>
             </div>
+            <p className="text-xs text-muted-foreground">Delivery fee calculated at checkout</p>
           </div>
           <Link to="/checkout" className="mt-6 block w-full rounded-full bg-primary py-3.5 text-center text-sm font-bold text-primary-foreground shadow-glow transition-smooth hover:-translate-y-0.5">
             Continue to checkout

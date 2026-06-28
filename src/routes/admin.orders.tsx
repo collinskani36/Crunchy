@@ -103,6 +103,8 @@ async function fetchOrders(): Promise<OrderRow[]> {
       id,
       customer_name,
       customer_phone,
+      subtotal,
+      delivery_fee,
       total,
       status,
       created_at,
@@ -114,20 +116,27 @@ async function fetchOrders(): Promise<OrderRow[]> {
 
   if (error) throw error;
 
-  return ((data ?? []) as SupabaseOrderRow[]).map((o) => ({
-    id: o.id,
-    customer_name: o.customer_name,
-    customer_phone: o.customer_phone,
-    subtotal: o.subtotal,
-    delivery_fee: o.delivery_fee,
-    total: o.total,
-    status: o.status as OrderStatus,
-    created_at: o.created_at,
-    item_count: Array.isArray(o.order_items) ? o.order_items.length : 0,
-    rider_id: o.rider_id ?? null,
-    delivery_address: o.delivery_address ?? null,
-    order_items: Array.isArray(o.order_items) ? o.order_items : [],
-  }));
+  return ((data ?? []) as SupabaseOrderRow[]).map((o) => {
+    const items = Array.isArray(o.order_items) ? o.order_items : [];
+    const derivedSubtotal =
+      o.subtotal ?? items.reduce((sum, i) => sum + i.food_price * i.quantity, 0);
+    const derivedDeliveryFee =
+      o.delivery_fee ?? (o.total - derivedSubtotal);
+    return {
+      id: o.id,
+      customer_name: o.customer_name,
+      customer_phone: o.customer_phone,
+      subtotal: derivedSubtotal,
+      delivery_fee: derivedDeliveryFee,
+      total: o.total,
+      status: o.status as OrderStatus,
+      created_at: o.created_at,
+      item_count: items.length,
+      rider_id: o.rider_id ?? null,
+      delivery_address: o.delivery_address ?? null,
+      order_items: items,
+    };
+  });
 }
 
 async function fetchRiders(): Promise<Rider[]> {
@@ -442,13 +451,12 @@ function AdminOrders() {
   }, [loadData]);
 
   async function handleStatusChange(orderId: string, newStatus: OrderStatus) {
-    // When marking as "out_for_delivery" (On the way), open inline rider picker if no rider yet
+    // When marking as "out_for_delivery", always open the rider picker
     if (newStatus === "out_for_delivery") {
-      const order = orders.find((o) => o.id === orderId);
-      if (order && !order.rider_id) {
-        setRiderPickerOrderId(orderId);
-        // Still update the status immediately
-      }
+      setRiderPickerOrderId(orderId);
+    } else {
+      // Close picker if status moves away from out_for_delivery
+      setRiderPickerOrderId((prev) => (prev === orderId ? null : prev));
     }
 
     await updateOrderStatus(orderId, newStatus);
@@ -664,56 +672,61 @@ function AdminOrders() {
                 {/* Expanded controls */}
                 {isExpanded && (
                   <div className="border-t border-border px-5 py-4 bg-secondary/30 rounded-b-2xl">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* Status control */}
-                      <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5">
-                          Order status
-                        </label>
-                        <select
-                          value={o.status}
-                          disabled={isUpdating}
-                          onChange={(e) =>
-                            handleStatusChange(o.id, e.target.value as OrderStatus)
-                          }
-                          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-medium focus:border-primary focus:outline-none disabled:opacity-50 transition-colors"
-                        >
-                          {STATUS_FLOW.map((s) => (
-                            <option key={s} value={s}>
-                              {STATUS_LABEL[s]}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Rider assignment */}
-                      <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5">
-                          Assign rider
-                        </label>
-                        <select
-                          value={o.rider_id ?? ""}
-                          disabled={isUpdating}
-                          onChange={(e) =>
-                            handleRiderAssign(o.id, e.target.value || null)
-                          }
-                          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-medium focus:border-primary focus:outline-none disabled:opacity-50 transition-colors"
-                        >
-                          <option value="">— Unassigned —</option>
-                          {riders.map((r) => (
-                            <option key={r.id} value={r.id}>
-                              {r.name} {r.is_online ? "🟢" : "⚫"}{" "}
-                              {r.rating != null ? `★ ${r.rating.toFixed(1)}` : ""}
-                            </option>
-                          ))}
-                        </select>
-                        {riders.length === 0 && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            No active riders found.
-                          </p>
-                        )}
-                      </div>
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5">
+                        Order status
+                      </label>
+                      <select
+                        value={o.status}
+                        disabled={isUpdating}
+                        onChange={(e) =>
+                          handleStatusChange(o.id, e.target.value as OrderStatus)
+                        }
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-medium focus:border-primary focus:outline-none disabled:opacity-50 transition-colors"
+                      >
+                        {STATUS_FLOW.map((s) => (
+                          <option key={s} value={s}>
+                            {STATUS_LABEL[s]}
+                          </option>
+                        ))}
+                      </select>
                     </div>
+
+                    {/* Rider section — only when out_for_delivery */}
+                    {o.status === "out_for_delivery" && (
+                      <>
+                        {/* If rider already assigned and picker is closed: show assigned rider + reassign button */}
+                        {o.rider_id && riderPickerOrderId !== o.id ? (
+                          <div className="mt-3 flex items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50/40 px-3 py-2.5">
+                            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-700">
+                              {(riderMap[o.rider_id]?.name ?? "?").charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-semibold text-foreground">
+                                {riderMap[o.rider_id]?.name ?? "Assigned rider"}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground">
+                                {riderMap[o.rider_id]?.phone ?? ""}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => setRiderPickerOrderId(o.id)}
+                              className="shrink-0 rounded-lg border border-indigo-200 bg-background px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 transition-colors hover:bg-indigo-50"
+                            >
+                              Reassign
+                            </button>
+                          </div>
+                        ) : (
+                          /* Picker open (new assignment or reassignment) */
+                          <RiderPickerPanel
+                            riders={riders}
+                            selectedRiderId={o.rider_id}
+                            onSelect={(riderId) => handleRiderSelectionInline(o.id, riderId)}
+                            isAssigning={assigningRider}
+                          />
+                        )}
+                      </>
+                    )}
 
                     {/* Order items breakdown */}
                     {(o.order_items ?? []).length > 0 && (
@@ -758,16 +771,6 @@ function AdminOrders() {
                         </svg>
                         <span>{o.delivery_address}</span>
                       </div>
-                    )}
-
-                    {/* Inline rider picker — slides open when status is out_for_delivery and picker is open */}
-                    {o.status === "out_for_delivery" && riderPickerOrderId === o.id && (
-                      <RiderPickerPanel
-                        riders={riders}
-                        selectedRiderId={o.rider_id}
-                        onSelect={(riderId) => handleRiderSelectionInline(o.id, riderId)}
-                        isAssigning={assigningRider}
-                      />
                     )}
 
                     {/* Updating indicator */}
