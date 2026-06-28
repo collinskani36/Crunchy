@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "433890401186",
+    "project_id": "crunchyinn",
+    "storage_bucket": "crunchyinn.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:433890401186:android:64b0adb1af63fd8e3af0fb",
+        "android_client_info": {
+          "package_name": "com.crunchyinn.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA6ust-capCtadflCWRW-F8qOZCbcr14ZU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

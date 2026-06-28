@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- =====================================================
+         CrunchyInn Brand Palette — extracted from logo
+    ===================================================== -->
+
+    <!-- Deep crimson red — logo oval / brand primary -->
+    <color name="colorPrimary">#B71C1C</color>
+
+    <!-- Darker crimson — status bar, nav bar -->
+    <color name="colorPrimaryDark">#7F0000</color>
+
+    <!-- Golden yellow — "Inn" text, fries, flame accent -->
+    <color name="colorAccent">#FFB300</color>
+
+    <!-- Splash background — white, seamless into landing page -->
+    <color name="splashBackground">#FFFFFF</color>
+
+   
+</resources>

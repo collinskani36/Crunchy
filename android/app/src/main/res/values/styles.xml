@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- ============================================================
+         BASE APP THEME
+         Global theme referenced in AndroidManifest android:theme
+    ============================================================ -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+
+        <!-- No action bar -->
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+
+        <!-- Status bar: brand color, white icons -->
+        <item name="android:statusBarColor">@color/colorPrimaryDark</item>
+        <item name="android:windowLightStatusBar">false</item>
+
+        <!-- Nav bar: match brand -->
+        <item name="android:navigationBarColor">@color/colorPrimaryDark</item>
+
+        <!-- Prevent white flash on cold start -->
+        <item name="android:windowBackground">@color/colorPrimary</item>
+    </style>
+
+
+    <!-- ============================================================
+         NO ACTION BAR — active theme while WebView is running
+    ============================================================ -->
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+
+        <!-- KEY FIX: pushes WebView content BELOW status bar -->
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:fitsSystemWindows">true</item>
+
+        <!-- Brand status bar after splash -->
+        <item name="android:statusBarColor">@color/colorPrimaryDark</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">@color/colorPrimaryDark</item>
+
+        <!-- Let WebView fill the window -->
+        <item name="android:background">@null</item>
+    </style>
+
+
+    <!-- ============================================================
+         LAUNCH / SPLASH THEME
+         Shown instantly on cold start. Uses Android 12 SplashScreen
+         API — premium centered icon on brand background.
+    ============================================================ -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <!-- Splash background — white to match your landing page -->
+        <item name="windowSplashScreenBackground">@color/splashBackground</item>
+
+        <!-- Full CrunchyInn logo (renamed icon.png to splash_logo.png) -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+
+        <!-- White bg so logo shows fully without clipping in the icon box -->
+        <item name="windowSplashScreenIconBackgroundColor">@color/splashBackground</item>
+
+        <!-- How long the icon shows before handing off -->
+        <item name="windowSplashScreenAnimationDuration">800</item>
+
+        <!-- Status bar during splash: white bg, dark icons -->
+        <item name="android:statusBarColor">@color/splashBackground</item>
+        <item name="android:windowLightStatusBar">true</item>
+
+        <!-- Switch to this theme after splash is done -->
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+    </style>
+
+</resources>
