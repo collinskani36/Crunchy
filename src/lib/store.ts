@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { supabase } from "./supabaseClient";
 
-// Define the Food type from your database
 export interface Food {
   id: string;
   name: string;
@@ -22,7 +22,6 @@ export interface Food {
 
 export type CartItem = { food: Food; qty: number };
 
-// ── All statuses must match exactly what admin writes to Supabase ─────────────
 export type OrderStatus =
   | "pending"
   | "confirmed"
@@ -75,6 +74,7 @@ export type Order = {
 };
 
 export type User = {
+  id?: string; // Supabase auth user ID (auth.users)
   name: string;
   email: string;
   phone?: string;
@@ -82,17 +82,22 @@ export type User = {
 
 type State = {
   user: User | null;
+  // customer_profiles.id — different from user.id (auth uid)
+  // Stored here so FoodCard and any other component can sync favorites
+  customerProfileId: string | null;
   cart: CartItem[];
   favorites: string[];
   addresses: Address[];
   orders: Order[];
-  login: (email: string, name?: string) => void;
+  login: (email: string, name?: string, id?: string) => void;
   logout: () => void;
+  setCustomerProfileId: (id: string | null) => void;
   addToCart: (food: Food, qty?: number) => void;
   removeFromCart: (id: string) => void;
   setQty: (id: string, qty: number) => void;
   clearCart: () => void;
-  toggleFavorite: (id: string) => void;
+  toggleFavorite: (foodId: string) => void;
+  setFavorites: (ids: string[]) => void;
   addAddress: (a: Omit<Address, "id">) => Address;
   removeAddress: (id: string) => void;
   placeOrder: (input: {
@@ -103,12 +108,13 @@ type State = {
   updateOrderStatus: (id: string, status: OrderStatus) => void;
 };
 
-const DELIVERY_FEE = 150; // KES
+const DELIVERY_FEE = 150;
 
 export const useStore = create<State>()(
   persist(
     (set, get) => ({
       user: null,
+      customerProfileId: null,
       cart: [],
       favorites: [],
       addresses: [
@@ -122,9 +128,14 @@ export const useStore = create<State>()(
       ],
       orders: [],
 
-      login: (email, name) =>
-        set({ user: { email, name: name ?? email.split("@")[0] } }),
-      logout: () => set({ user: null, cart: [] }),
+      login: (email, name, id) =>
+        set({ user: { email, name: name ?? email.split("@")[0], id } }),
+
+      logout: () =>
+        set({ user: null, cart: [], favorites: [], customerProfileId: null }),
+
+      // Called by account.tsx after fetching the customer_profiles row
+      setCustomerProfileId: (id) => set({ customerProfileId: id }),
 
       addToCart: (food, qty = 1) =>
         set((s) => {
@@ -152,12 +163,41 @@ export const useStore = create<State>()(
 
       clearCart: () => set({ cart: [] }),
 
-      toggleFavorite: (id) =>
-        set((s) => ({
-          favorites: s.favorites.includes(id)
-            ? s.favorites.filter((f) => f !== id)
-            : [...s.favorites, id],
-        })),
+      // Reads customerProfileId from store itself — no need to pass it as arg
+      toggleFavorite: (foodId) => {
+        const { favorites, customerProfileId } = get();
+        const isCurrentlyFav = favorites.includes(foodId);
+
+        // Update local store immediately for instant UI response
+        set({
+          favorites: isCurrentlyFav
+            ? favorites.filter((f) => f !== foodId)
+            : [...favorites, foodId],
+        });
+
+        // Sync to Supabase only when a customer_profile exists
+        if (!customerProfileId) return;
+
+        if (isCurrentlyFav) {
+          supabase
+            .from("customer_favorites")
+            .delete()
+            .eq("customer_profile_id", customerProfileId)
+            .eq("food_id", foodId)
+            .then(({ error }) => {
+              if (error) console.error("Failed to remove favorite:", error);
+            });
+        } else {
+          supabase
+            .from("customer_favorites")
+            .insert({ customer_profile_id: customerProfileId, food_id: foodId })
+            .then(({ error }) => {
+              if (error) console.error("Failed to add favorite:", error);
+            });
+        }
+      },
+
+      setFavorites: (ids) => set({ favorites: ids }),
 
       addAddress: (a) => {
         const addr: Address = { ...a, id: `a${Date.now()}` };
@@ -168,9 +208,6 @@ export const useStore = create<State>()(
       removeAddress: (id) =>
         set((s) => ({ addresses: s.addresses.filter((a) => a.id !== id) })),
 
-      // ── placeOrder: inserts into Supabase, no mock simulation ──────────────
-      // Status progression is driven entirely by admin via Supabase.
-      // The customer page polls / subscribes to live DB updates.
       placeOrder: ({ address, customerName, customerPhone }) => {
         const cart = get().cart;
         const subtotal = cart.reduce((s, c) => s + c.food.price * c.qty, 0);
@@ -187,8 +224,6 @@ export const useStore = create<State>()(
           customerPhone,
           eta: 35,
         };
-        // Store the order locally so the orders list page shows it immediately,
-        // but the source of truth for status is always Supabase.
         set((s) => ({ orders: [order, ...s.orders], cart: [] }));
         return order;
       },
@@ -212,6 +247,7 @@ export const useStore = create<State>()(
       skipHydration: true,
       partialize: (s) => ({
         user: s.user,
+        customerProfileId: s.customerProfileId,
         cart: s.cart,
         favorites: s.favorites,
         addresses: s.addresses,

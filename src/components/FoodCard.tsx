@@ -45,7 +45,7 @@ export function FoodCard({ food }: FoodCardProps) {
         </div>
       </Link>
 
-      {/* Favourite button */}
+      {/* Favourite button — toggleFavorite reads customerProfileId from store */}
       <button
         onClick={(e) => {
           e.preventDefault();
@@ -70,7 +70,6 @@ export function FoodCard({ food }: FoodCardProps) {
           {food.description}
         </p>
 
-        {/* Rating & prep time */}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="flex items-center gap-0.5 font-semibold text-foreground">
             <Star className="h-3 w-3 fill-accent text-accent" />
@@ -87,10 +86,8 @@ export function FoodCard({ food }: FoodCardProps) {
           )}
         </div>
 
-        {/* Price + quick-add */}
         <div className="mt-auto flex items-center justify-between gap-2 pt-1">
           <span className="text-sm font-bold">{formatPrice(food.price)}</span>
-
           <button
             onClick={() => addToCart(cartFood, 1)}
             disabled={!food.is_available}

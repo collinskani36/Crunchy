@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ChevronDown, ChevronUp, Phone, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PageShell } from "@/components/PageShell";
@@ -8,7 +8,7 @@ import { STATUS_LABEL, STATUS_FLOW, type OrderStatus } from "@/lib/store";
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
-const LS_KEY = "crunchyinn_order_ids";
+export const LS_KEY = "crunchyinn_order_ids";
 
 const statusColor: Record<OrderStatus, string> = {
   pending: "bg-amber-500/15 text-amber-600",
@@ -30,7 +30,6 @@ const progressBarColor: Record<OrderStatus, string> = {
   cancelled: "bg-destructive",
 };
 
-// Progress % based on position in STATUS_FLOW (cancelled shown as 0)
 function getProgress(status: OrderStatus): number {
   if (status === "cancelled") return 0;
   const idx = STATUS_FLOW.indexOf(status);
@@ -40,13 +39,13 @@ function getProgress(status: OrderStatus): number {
 
 // ── DB types ──────────────────────────────────────────────────────────────────
 
-type DbRider = {
+export type DbRider = {
   id: string;
   name: string;
   phone: string;
 };
 
-type DbOrder = {
+export type DbOrder = {
   id: string;
   status: OrderStatus;
   total: number;
@@ -57,7 +56,7 @@ type DbOrder = {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function getSavedIds(): string[] {
+export function getSavedIds(): string[] {
   try {
     return JSON.parse(localStorage.getItem(LS_KEY) ?? "[]");
   } catch {
@@ -65,7 +64,7 @@ function getSavedIds(): string[] {
   }
 }
 
-function mergeOrders(a: DbOrder[], b: DbOrder[]): DbOrder[] {
+export function mergeOrders(a: DbOrder[], b: DbOrder[]): DbOrder[] {
   const seen = new Set<string>();
   return [...a, ...b].filter((o) => {
     if (seen.has(o.id)) return false;
@@ -74,14 +73,7 @@ function mergeOrders(a: DbOrder[], b: DbOrder[]): DbOrder[] {
   });
 }
 
-// ── route ─────────────────────────────────────────────────────────────────────
-
-export const Route = createFileRoute("/orders")({
-  head: () => ({ meta: [{ title: "Your orders — Crunchy Inn" }] }),
-  component: OrdersPage,
-});
-
-const ORDER_SELECT = `
+export const ORDER_SELECT = `
   id,
   status,
   total,
@@ -89,6 +81,30 @@ const ORDER_SELECT = `
   rider_id,
   order_items ( food_name, quantity )
 `;
+
+export async function fetchRidersForOrders(
+  orderList: DbOrder[]
+): Promise<Record<string, DbRider>> {
+  const riderIds = [
+    ...new Set(orderList.map((o) => o.rider_id).filter(Boolean) as string[]),
+  ];
+  if (riderIds.length === 0) return {};
+
+  const { data } = await (supabase as any)
+    .from("riders")
+    .select("id, name, phone")
+    .in("id", riderIds);
+
+  if (!data) return {};
+  return Object.fromEntries((data as DbRider[]).map((r) => [r.id, r]));
+}
+
+// ── route ─────────────────────────────────────────────────────────────────────
+
+export const Route = createFileRoute("/orders")({
+  head: () => ({ meta: [{ title: "Your orders — Crunchy Inn" }] }),
+  component: OrdersPage,
+});
 
 function OrdersPage() {
   const [orders, setOrders] = useState<DbOrder[]>([]);
@@ -100,7 +116,7 @@ function OrdersPage() {
   const [searched, setSearched] = useState(false);
   const [lookupOpen, setLookupOpen] = useState(false);
 
-  // ── Auto-load orders saved in localStorage on mount ───────────────────────
+  // ── Load from localStorage IDs on mount ───────────────────────────────────
   useEffect(() => {
     async function loadSaved() {
       const ids = getSavedIds();
@@ -108,8 +124,7 @@ function OrdersPage() {
         setLoading(false);
         return;
       }
-
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from("orders")
         .select(ORDER_SELECT)
         .in("id", ids)
@@ -118,9 +133,8 @@ function OrdersPage() {
       const loaded = (data as DbOrder[]) ?? [];
       setOrders(loaded);
       setLoading(false);
-
-      // Fetch any assigned riders up-front
-      await fetchRidersForOrders(loaded);
+      const riderMap = await fetchRidersForOrders(loaded);
+      setRiders(riderMap);
     }
     loadSaved();
   }, []);
@@ -137,76 +151,45 @@ function OrdersPage() {
         { event: "UPDATE", schema: "public", table: "orders" },
         async (payload) => {
           const updated = payload.new as any;
-          // Only react to orders this customer owns
           if (!ids.includes(updated.id)) return;
 
           setOrders((prev) =>
             prev.map((o) =>
               o.id === updated.id
-                ? {
-                    ...o,
-                    status: updated.status as OrderStatus,
-                    rider_id: updated.rider_id ?? null,
-                  }
+                ? { ...o, status: updated.status as OrderStatus, rider_id: updated.rider_id ?? null }
                 : o
             )
           );
 
-          // If a rider was just assigned, fetch their details
           if (updated.rider_id) {
-            setRiders((prev) => {
-              if (prev[updated.rider_id]) return prev; // already have it
-              return prev; // will be fetched below
-            });
-            const { data } = await supabase
+            const { data } = await (supabase as any)
               .from("riders")
               .select("id, name, phone")
               .eq("id", updated.rider_id)
               .single();
             if (data) {
-              setRiders((prev) => ({ ...prev, [data.id]: data as DbRider }));
+              setRiders((prev) => ({ ...prev, [(data as DbRider).id]: data as DbRider }));
             }
           }
         }
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
-  async function fetchRidersForOrders(orderList: DbOrder[]) {
-    const riderIds = [
-      ...new Set(orderList.map((o) => o.rider_id).filter(Boolean) as string[]),
-    ];
-    if (riderIds.length === 0) return;
-
-    const { data } = await supabase
-      .from("riders")
-      .select("id, name, phone")
-      .in("id", riderIds);
-
-    if (data) {
-      const map = Object.fromEntries(
-        (data as DbRider[]).map((r) => [r.id, r])
-      );
-      setRiders((prev) => ({ ...prev, ...map }));
-    }
-  }
-
-  // ── Phone lookup (secondary — for returning customers on new device) ───────
+  // ── Phone lookup ──────────────────────────────────────────────────────────
   async function lookupByPhone() {
     if (!phone.trim()) return;
     setSearching(true);
 
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("orders")
       .select(ORDER_SELECT)
       .eq("customer_phone", phone.trim())
       .order("created_at", { ascending: false });
 
-    if (data && data.length > 0) {
+    if (data && (data as DbOrder[]).length > 0) {
       const existingIds = getSavedIds();
       const merged = Array.from(
         new Set([...existingIds, ...(data as DbOrder[]).map((o) => o.id)])
@@ -214,19 +197,16 @@ function OrdersPage() {
       localStorage.setItem(LS_KEY, JSON.stringify(merged));
       const newOrders = data as DbOrder[];
       setOrders((prev) => mergeOrders(prev, newOrders));
-      await fetchRidersForOrders(newOrders);
+      const riderMap = await fetchRidersForOrders(newOrders);
+      setRiders((prev) => ({ ...prev, ...riderMap }));
     }
 
     setSearching(false);
     setSearched(true);
   }
 
-  const active = orders.filter(
-    (o) => o.status !== "delivered" && o.status !== "cancelled"
-  );
-  const past = orders.filter(
-    (o) => o.status === "delivered" || o.status === "cancelled"
-  );
+  const active = orders.filter((o) => o.status !== "delivered" && o.status !== "cancelled");
+  const past = orders.filter((o) => o.status === "delivered" || o.status === "cancelled");
 
   return (
     <PageShell>
@@ -240,12 +220,9 @@ function OrdersPage() {
         </div>
       ) : (
         <>
-          {/* Active orders — shown first, prominently */}
           {active.length > 0 && (
             <section className="mb-10">
-              <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-muted-foreground">
-                Active
-              </h2>
+              <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-muted-foreground">Active</h2>
               <div className="space-y-3">
                 {active.map((o) => (
                   <OrderRow key={o.id} order={o} rider={o.rider_id ? riders[o.rider_id] : undefined} />
@@ -254,12 +231,9 @@ function OrdersPage() {
             </section>
           )}
 
-          {/* Past orders */}
           {past.length > 0 && (
             <section className="mb-10">
-              <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-muted-foreground">
-                Past orders
-              </h2>
+              <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-muted-foreground">Past orders</h2>
               <div className="space-y-3">
                 {past.map((o) => (
                   <OrderRow key={o.id} order={o} rider={o.rider_id ? riders[o.rider_id] : undefined} />
@@ -268,18 +242,15 @@ function OrdersPage() {
             </section>
           )}
 
-          {/* Empty state */}
           {orders.length === 0 && (
             <div className="rounded-3xl bg-card p-10 text-center shadow-soft">
               <p className="text-2xl">🍽️</p>
               <p className="mt-2 font-semibold">No orders yet</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Place an order and it will appear here automatically.
-              </p>
+              <p className="mt-1 text-sm text-muted-foreground">Place an order and it will appear here automatically.</p>
             </div>
           )}
 
-          {/* Phone lookup — collapsed by default, secondary action */}
+          {/* Phone lookup — collapsed by default */}
           <div className="mt-6 rounded-3xl bg-card shadow-soft overflow-hidden">
             <button
               type="button"
@@ -297,8 +268,7 @@ function OrdersPage() {
             {lookupOpen && (
               <div className="border-t border-border px-5 pb-5 pt-4">
                 <p className="mb-3 text-xs text-muted-foreground">
-                  Enter the phone number you used when ordering to find your
-                  order history.
+                  Enter the phone number you used when ordering to find your order history.
                 </p>
                 <div className="flex gap-2">
                   <input
@@ -319,9 +289,7 @@ function OrdersPage() {
                   </button>
                 </div>
                 {searched && orders.length === 0 && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    No orders found for that number.
-                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">No orders found for that number.</p>
                 )}
               </div>
             )}
@@ -332,11 +300,11 @@ function OrdersPage() {
   );
 }
 
-// ── Order row with inline progress bar ────────────────────────────────────────
+// ── Shared OrderRow (also exported for use in account.tsx) ────────────────────
 
-function OrderRow({ order, rider }: { order: DbOrder; rider?: DbRider }) {
-  const color =
-    statusColor[order.status] ?? "bg-muted text-muted-foreground";
+export function OrderRow({ order, rider }: { order: DbOrder; rider?: DbRider }) {
+  const navigate = useNavigate();
+  const color = statusColor[order.status] ?? "bg-muted text-muted-foreground";
   const label = STATUS_LABEL[order.status] ?? order.status;
   const barColor = progressBarColor[order.status] ?? "bg-primary";
   const progress = getProgress(order.status);
@@ -344,43 +312,30 @@ function OrderRow({ order, rider }: { order: DbOrder; rider?: DbRider }) {
   const isCancelled = order.status === "cancelled";
   const isOutForDelivery = order.status === "out_for_delivery";
 
-  const itemSummary = order.order_items
-    .map((i) => `${i.quantity}× ${i.food_name}`)
-    .join(", ");
+  const itemSummary = order.order_items.map((i) => `${i.quantity}× ${i.food_name}`).join(", ");
 
   return (
-    <Link
-      to="/orders/$orderId"
-      params={{ orderId: order.id }}
-      className="block rounded-2xl bg-card p-4 shadow-soft transition-smooth hover:-translate-y-0.5 hover:shadow-card"
+    <div
+      onClick={() => navigate({ to: "/orders/$orderId", params: { orderId: order.id } })}
+      className="block cursor-pointer rounded-2xl bg-card p-4 shadow-soft transition-smooth hover:-translate-y-0.5 hover:shadow-card"
     >
-      {/* Top row */}
       <div className="flex items-center gap-4">
-        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-primary/10 text-2xl">
-          🍽️
-        </div>
+        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-primary/10 text-2xl">🍽️</div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="truncate text-sm font-bold">{order.id.slice(0, 8)}…</p>
-            <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${color}`}
-            >
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${color}`}>
               {label}
             </span>
           </div>
-          <p className="line-clamp-1 text-sm text-muted-foreground">
-            {itemSummary}
-          </p>
+          <p className="line-clamp-1 text-sm text-muted-foreground">{itemSummary}</p>
         </div>
         <div className="shrink-0 text-right">
           <p className="font-bold">{formatPrice(order.total)}</p>
-          <p className="text-xs text-muted-foreground">
-            {new Date(order.created_at).toLocaleDateString()}
-          </p>
+          <p className="text-xs text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</p>
         </div>
       </div>
 
-      {/* Inline progress bar */}
       {!isCancelled && (
         <div className="mt-3">
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
@@ -393,14 +348,11 @@ function OrderRow({ order, rider }: { order: DbOrder; rider?: DbRider }) {
             <span>Placed</span>
             <span>Preparing</span>
             <span>On the way</span>
-            <span className={isDelivered ? "font-bold text-emerald-600" : ""}>
-              Delivered
-            </span>
+            <span className={isDelivered ? "font-bold text-emerald-600" : ""}>Delivered</span>
           </div>
         </div>
       )}
 
-      {/* Rider contact — slides in when out for delivery */}
       {isOutForDelivery && rider && (
         <div className="mt-3 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
           <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/15 text-sm font-bold text-primary">
@@ -422,10 +374,8 @@ function OrderRow({ order, rider }: { order: DbOrder; rider?: DbRider }) {
       )}
 
       {isCancelled && (
-        <p className="mt-2 text-xs text-destructive">
-          This order was cancelled.
-        </p>
+        <p className="mt-2 text-xs text-destructive">This order was cancelled.</p>
       )}
-    </Link>
+    </div>
   );
 }

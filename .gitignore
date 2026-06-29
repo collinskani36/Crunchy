@@ -16,6 +16,19 @@ dist-ssr
 .nitro
 *.local
 
+# Firebase
+android/app/google-services.json
+
+# Android build files
+android/.gradle
+android/build
+android/app/build
+android/app/build.gradle
+
+# Capacitor generated
+android/capacitor-cordova-android-plugins/build
+
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
