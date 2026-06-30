@@ -10,6 +10,34 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { supabase } from "@/lib/supabaseClient";
+import { Capacitor } from "@capacitor/core";
+import { FirebaseMessaging } from "@capacitor-firebase/messaging";
+
+async function registerAdminDeviceToken() {
+  // Only attempt this inside the actual Capacitor app, not the website
+  if (!Capacitor.isNativePlatform()) return;
+
+  try {
+    const permission = await FirebaseMessaging.requestPermissions();
+    if (permission.receive !== "granted") return;
+
+    const { token } = await FirebaseMessaging.getToken();
+    if (!token) return;
+
+    const { error } = await supabase
+      .from("device_tokens")
+      .upsert(
+        { token, role: "admin", device_id: token },
+        { onConflict: "token" }
+      );
+
+    if (error) {
+      console.error("Failed to save admin device token:", error.message);
+    }
+  } catch (err) {
+    console.error("FCM token registration failed:", err);
+  }
+}
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -52,12 +80,18 @@ function AdminLayout() {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setLoading(false);
+      if (data.session) {
+        registerAdminDeviceToken();
+      }
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session) {
+        registerAdminDeviceToken();
+      }
     });
 
     return () => subscription.unsubscribe();
