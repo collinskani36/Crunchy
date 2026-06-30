@@ -17,28 +17,39 @@ async function registerAdminDeviceToken() {
   if (!Capacitor.isNativePlatform()) return;
 
   try {
-    // Dynamic import: keeps this out of the Vercel/website build entirely,
-    // since the plugin's web fallback needs a package we don't ship to the site.
-    const { FirebaseMessaging } = await import("@capacitor-firebase/messaging");
+    // Dynamic import keeps this out of the Vercel/website build entirely
+    const { PushNotifications } = await import("@capacitor/push-notifications");
 
-    const permission = await FirebaseMessaging.requestPermissions();
-    if (permission.receive !== "granted") return;
+    const permStatus = await PushNotifications.checkPermissions();
+    let granted = permStatus.receive === "granted";
 
-    const { token } = await FirebaseMessaging.getToken();
-    if (!token) return;
-
-    const { error } = await supabase
-      .from("device_tokens")
-      .upsert(
-        { token, role: "admin", device_id: token },
-        { onConflict: "token" }
-      );
-
-    if (error) {
-      console.error("Failed to save admin device token:", error.message);
+    if (!granted) {
+      const req = await PushNotifications.requestPermissions();
+      granted = req.receive === "granted";
     }
+
+    if (!granted) return;
+
+    await PushNotifications.register();
+
+    PushNotifications.addListener("registration", async (token) => {
+      const { error } = await supabase
+        .from("device_tokens")
+        .upsert(
+          { token: token.value, role: "admin", device_id: token.value },
+          { onConflict: "token" }
+        );
+
+      if (error) {
+        console.error("Failed to save admin device token:", error.message);
+      }
+    });
+
+    PushNotifications.addListener("registrationError", (err) => {
+      console.error("Push registration error:", err);
+    });
   } catch (err) {
-    console.error("FCM token registration failed:", err);
+    console.error("Push notification setup failed:", err);
   }
 }
 
