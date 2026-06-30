@@ -11,13 +11,16 @@ import {
 import { Logo } from "@/components/Logo";
 import { supabase } from "@/lib/supabaseClient";
 import { Capacitor } from "@capacitor/core";
-import { FirebaseMessaging } from "@capacitor-firebase/messaging";
 
 async function registerAdminDeviceToken() {
   // Only attempt this inside the actual Capacitor app, not the website
   if (!Capacitor.isNativePlatform()) return;
 
   try {
+    // Dynamic import: keeps this out of the Vercel/website build entirely,
+    // since the plugin's web fallback needs a package we don't ship to the site.
+    const { FirebaseMessaging } = await import("@capacitor-firebase/messaging");
+
     const permission = await FirebaseMessaging.requestPermissions();
     if (permission.receive !== "granted") return;
 
