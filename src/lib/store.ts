@@ -74,7 +74,12 @@ export type Order = {
 };
 
 export type User = {
-  id?: string; // Supabase auth user ID (auth.users)
+  // Mirrors customer_profiles.id — NOT a Supabase Auth uid, this app doesn't
+  // use Supabase Auth for customers. Kept as `id` (rather than renaming to
+  // profileId) so existing effects that key off `user?.id` — see
+  // account.tsx's bootstrap effect — refire correctly whenever the active
+  // profile changes.
+  id?: string;
   name: string;
   email: string;
   phone?: string;
@@ -106,9 +111,81 @@ type State = {
     customerPhone: string;
   }) => Order;
   updateOrderStatus: (id: string, status: OrderStatus) => void;
+  // Clears everything that could leak between two different identities on
+  // the same device (favorites, addresses, orders, and the order-tracking
+  // id list) WITHOUT touching the device id itself or the cart. Used when
+  // login.tsx resolves a sign-in to a *different* customer_profiles row
+  // than whatever was previously active on this device — so the incoming
+  // account doesn't inherit a stranger's addresses/orders/favorites, and
+  // the outgoing local favorites don't get pushed onto the incoming
+  // account. logout() does its own full wipe (see below) rather than
+  // calling this, since it additionally rotates the device id and clears
+  // the cart/user.
+  clearLocalIdentityData: () => void;
 };
 
 const DELIVERY_FEE = 150;
+
+// ── Anonymous customer identity ────────────────────────────────────────────
+// Single source of truth for "who is this customer" — maps 1:1 to a row in
+// customer_profiles.id. There's no Supabase Auth involved; a customer becomes
+// "signed in" simply by having a customer_profiles row (created at checkout
+// or via login.tsx sign-up), keyed off this localStorage id. checkout.tsx,
+// account.tsx, and login.tsx all use these same helpers so favorites,
+// addresses, and order history resolve to the same profile instead of
+// drifting apart.
+export const CUSTOMER_ID_KEY = "crunchyinn_customer_id";
+
+// Device-local list of order ids this browser has placed or looked up —
+// lets /orders and /account show order history without requiring a
+// customer_profiles row. Previously lived in orders.tsx as `LS_KEY`; moved
+// here so logout()/clearLocalIdentityData() can clear it without a circular
+// import (orders.tsx already imports STATUS_LABEL/STATUS_FLOW from here).
+// Re-exported from orders.tsx under the same name for backward compat.
+export const LS_KEY = "crunchyinn_order_ids";
+
+export function getOrCreateCustomerId(): string {
+  try {
+    const existing = localStorage.getItem(CUSTOMER_ID_KEY);
+    if (existing) return existing;
+    const id = crypto.randomUUID();
+    localStorage.setItem(CUSTOMER_ID_KEY, id);
+    return id;
+  } catch {
+    return crypto.randomUUID(); // fallback if localStorage unavailable
+  }
+}
+
+// Explicitly point this device at a specific customer_profiles row — used by
+// login.tsx after resolving (sign-in) or creating (sign-up) a profile.
+// Unlike getOrCreateCustomerId(), this always overwrites.
+export function setCustomerId(id: string): void {
+  try {
+    localStorage.setItem(CUSTOMER_ID_KEY, id);
+  } catch {
+    // localStorage unavailable — nothing we can persist, caller still gets
+    // the id back via the in-memory store update.
+  }
+}
+
+// Forgets this device's current customer identity by overwriting it with a
+// brand-new UUID. Used only by logout() — "forget this customer on this
+// device" so a different person can sign in fresh on a shared device.
+function rotateCustomerId(): void {
+  try {
+    localStorage.setItem(CUSTOMER_ID_KEY, crypto.randomUUID());
+  } catch {
+    // localStorage unavailable
+  }
+}
+
+function clearSavedOrderIds(): void {
+  try {
+    localStorage.removeItem(LS_KEY);
+  } catch {
+    // localStorage unavailable
+  }
+}
 
 export const useStore = create<State>()(
   persist(
@@ -117,22 +194,35 @@ export const useStore = create<State>()(
       customerProfileId: null,
       cart: [],
       favorites: [],
-      addresses: [
-        {
-          id: "a1",
-          label: "Home",
-          line1: "12 Baker Street",
-          city: "Eldoret",
-          notes: "Ring twice",
-        },
-      ],
+      addresses: [],
       orders: [],
 
       login: (email, name, id) =>
         set({ user: { email, name: name ?? email.split("@")[0], id } }),
 
-      logout: () =>
-        set({ user: null, cart: [], favorites: [], customerProfileId: null }),
+      // Full clean-slate: forgets this customer on this device so a
+      // different person can sign in fresh. Rotates the raw localStorage
+      // device id (not just the in-memory customerProfileId) and clears the
+      // separate order-tracking id list, since both survive a plain state
+      // reset and would otherwise cause account.tsx's bootstrap effect to
+      // silently re-resolve the same profile right after logout.
+      logout: () => {
+        rotateCustomerId();
+        clearSavedOrderIds();
+        set({
+          user: null,
+          cart: [],
+          favorites: [],
+          addresses: [],
+          orders: [],
+          customerProfileId: null,
+        });
+      },
+
+      clearLocalIdentityData: () => {
+        clearSavedOrderIds();
+        set({ favorites: [], addresses: [], orders: [] });
+      },
 
       // Called by account.tsx after fetching the customer_profiles row
       setCustomerProfileId: (id) => set({ customerProfileId: id }),

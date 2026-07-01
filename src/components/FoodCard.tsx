@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { Heart, Star, Clock } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { formatPrice } from "@/lib/utils";
-import type { Food } from "@/lib/data";
+import type { Food } from "@/lib/store";
 
 interface FoodCardProps {
   food: Food;

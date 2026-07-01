@@ -5,7 +5,7 @@ import heroImage from "@/assets/hero-grill.jpg";
 import { PageShell } from "@/components/PageShell";
 import { FoodCard } from "@/components/FoodCard";
 import { supabase } from "@/lib/supabaseClient";
-import type { Food } from "@/lib/data";
+import type { Food } from "@/lib/store";
 
 // ── types matching the DB rows ──────────────────────────────────────────────
 type DbCategory = {
@@ -27,7 +27,10 @@ type DbFood = {
   rating: number | null;
   prep_time: string | null;
   is_popular: boolean;
+  is_available: boolean;
   tags: string[] | null;
+  created_at: string;
+  updated_at: string;
 };
 
 // ── map DB row → app Food type ───────────────────────────────────────────────
@@ -37,14 +40,18 @@ function mapFood(row: DbFood): Food {
     name: row.name,
     description: row.description,
     price: row.price,
-    categoryId: row.category_id,
+    category_id: row.category_id,
+    image_url: row.image_url,
+    rating: row.rating ?? 0,
+    prep_time: row.prep_time ?? null,
+    is_popular: row.is_popular,
+    is_available: row.is_available,
+    tags: row.tags ?? [],
+    created_at: row.created_at,
+    updated_at: row.updated_at,
     emoji: "🍽️",
     gradient: "from-orange-400 to-red-500",
-    rating: row.rating ?? 0,
-    prepTime: row.prep_time ?? "",
-    popular: row.is_popular,
-    tags: row.tags ?? [],
-  };
+  } as Food;
 }
 
 // ── map DB row → shape the categories section needs ─────────────────────────
@@ -105,7 +112,7 @@ function Home() {
           .order("sort_order"),
         supabase
           .from("foods")
-          .select("id, name, description, price, category_id, image_url, rating, prep_time, is_popular, tags")
+          .select("id, name, description, price, category_id, image_url, rating, prep_time, is_popular, is_available, tags, created_at, updated_at")
           .eq("is_popular", true)
           .eq("is_available", true),
       ]);

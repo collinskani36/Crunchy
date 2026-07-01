@@ -4,11 +4,15 @@ import { useEffect, useState } from "react";
 import { PageShell } from "@/components/PageShell";
 import { formatPrice } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
-import { STATUS_LABEL, STATUS_FLOW, type OrderStatus } from "@/lib/store";
+import { STATUS_LABEL, STATUS_FLOW, LS_KEY, type OrderStatus } from "@/lib/store";
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
-export const LS_KEY = "crunchyinn_order_ids";
+// LS_KEY now lives in lib/store.ts (source of truth) so logout()/
+// clearLocalIdentityData() can clear it without a circular import back into
+// this file. Re-exported here under the same name since checkout.tsx and
+// account.tsx both still import it as `from "./orders"`.
+export { LS_KEY };
 
 const statusColor: Record<OrderStatus, string> = {
   pending: "bg-amber-500/15 text-amber-600",

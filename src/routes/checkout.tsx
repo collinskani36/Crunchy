@@ -3,26 +3,11 @@ import { MapPin, Smartphone, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PageShell } from "@/components/PageShell";
 import { formatPrice } from "@/lib/utils";
-import { useStore } from "@/lib/store";
+import { useStore, CUSTOMER_ID_KEY, getOrCreateCustomerId } from "@/lib/store";
 import { supabase } from "@/lib/supabaseClient";
 import { LS_KEY } from "./orders";
 
 const TILL_NUMBER = "123456";
-
-// ── localStorage key for anonymous customer identity ──────────────────────────
-const CUSTOMER_ID_KEY = "crunchyinn_customer_id";
-
-function getOrCreateCustomerId(): string {
-  try {
-    const existing = localStorage.getItem(CUSTOMER_ID_KEY);
-    if (existing) return existing;
-    const id = crypto.randomUUID();
-    localStorage.setItem(CUSTOMER_ID_KEY, id);
-    return id;
-  } catch {
-    return crypto.randomUUID(); // fallback if localStorage unavailable
-  }
-}
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -88,7 +73,7 @@ function CheckoutPage() {
         .from("customer_profiles")
         .select("id, name, phone")
         .eq("id", customerId)
-        .single();
+        .maybeSingle();
 
       if (data) {
         const profile = data as CustomerProfile;
@@ -151,20 +136,20 @@ function CheckoutPage() {
     setSubmitting(true);
     setError(null);
 
-    // 1. Upsert customer_profile (table-only identity, no Supabase Auth)
+    // 1. Upsert customer_profile (table-only identity, no Supabase Auth).
+    // Using upsert instead of "check then insert-or-update" because that
+    // check relies on a SELECT (the prefill effect above) that can come
+    // back empty even when the row already exists — causing a duplicate-key
+    // conflict on insert. Upsert handles the create-or-update atomically
+    // without depending on that SELECT.
     const customerId = getOrCreateCustomerId();
 
-    if (customerProfile) {
-      // Update existing profile with latest name/phone
-      await (supabase as any)
-        .from("customer_profiles")
-        .update({ name: name.trim(), phone: phone.trim() })
-        .eq("id", customerId);
-    } else {
-      // First order — create the profile row using the stable localStorage UUID
-      await (supabase as any)
-        .from("customer_profiles")
-        .insert({ id: customerId, name: name.trim(), phone: phone.trim() });
+    const { error: profileError } = await (supabase as any)
+      .from("customer_profiles")
+      .upsert({ id: customerId, name: name.trim(), phone: phone.trim() });
+
+    if (profileError) {
+      console.error("customer_profiles upsert error:", profileError);
     }
 
     // 2. Insert the order
@@ -211,9 +196,16 @@ function CheckoutPage() {
     // 4. Persist orderId to localStorage so /orders and /account load it
     saveOrderId(orderId);
 
-    // 5. Clear cart and navigate to live tracking
+    // 5. Navigate to live tracking FIRST, then clear the cart.
+    // Clearing the cart before navigating caused this component to
+    // re-render with an empty cart while still mounted (`cart` is read
+    // from the store right here), which triggered the "Your cart is
+    // empty" early-return below instead of the order confirmation page —
+    // making the just-placed order look like it "vanished". Navigating
+    // first unmounts this page before the empty-cart state has anywhere
+    // to render.
+    await navigate({ to: "/orders/$orderId", params: { orderId } });
     clearCart();
-    navigate({ to: "/orders/$orderId", params: { orderId } });
   };
 
   return (

@@ -3,7 +3,7 @@ import { Heart, LogOut, MapPin, Package, Settings, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PageShell } from "@/components/PageShell";
 import { FoodCard } from "@/components/FoodCard";
-import { useStore } from "@/lib/store";
+import { useStore, getOrCreateCustomerId } from "@/lib/store";
 import { supabase } from "@/lib/supabaseClient";
 import {
   OrderRow,
@@ -99,19 +99,24 @@ function AccountPage() {
       setOrdersLoading(true);
       setFavsLoading(true);
 
-      // 1. Fetch customer_profile for signed-in user
+      // 1. Resolve the customer_profile.
+      // This app doesn't use Supabase Auth for customers — "signed in" means
+      // the browser's localStorage customer id (created at checkout, see
+      // getOrCreateCustomerId in lib/store) already has a matching
+      // customer_profiles row. That's the same id checkout.tsx writes to
+      // when it inserts customer_profiles, so this is how favorites,
+      // addresses, and order history reconnect to a returning customer.
       let profileId: string | null = null;
-      if (user?.id) {
-        const { data: profile } = await supabase
-          .from("customer_profiles")
-          .select("id")
-          .eq("user_id", user.id)
-          .single();
+      const customerId = getOrCreateCustomerId();
+      const { data: profile } = await supabase
+        .from("customer_profiles")
+        .select("id")
+        .eq("id", customerId)
+        .maybeSingle();
 
-        if (profile) {
-          profileId = (profile as any).id;
-          setCustomerProfileId(profileId);
-        }
+      if (profile) {
+        profileId = (profile as any).id;
+        setCustomerProfileId(profileId);
       }
 
       // 2. Resolve favorites
