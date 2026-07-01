@@ -54,6 +54,7 @@ function AccountPage() {
   const addresses = useStore((s) => s.addresses);
   const removeAddress = useStore((s) => s.removeAddress);
   const addAddress = useStore((s) => s.addAddress);
+  const setAddresses = useStore((s) => s.setAddresses);
   const favIds = useStore((s) => s.favorites);
   const setFavorites = useStore((s) => s.setFavorites);
   const setCustomerProfileId = useStore((s) => s.setCustomerProfileId);
@@ -93,7 +94,7 @@ function AccountPage() {
     }));
   }
 
-  // ── On mount / user change: fetch profile, favorites, orders ──────────────
+  // ── On mount / user change: fetch profile, favorites, addresses, orders ───
   useEffect(() => {
     async function bootstrap() {
       setOrdersLoading(true);
@@ -153,6 +154,34 @@ function AccountPage() {
       }
 
       setFavsLoading(false);
+
+      // 2.5. Resolve addresses (same merge pattern as favorites above)
+      if (profileId) {
+        const { data: addrRows } = await supabase
+          .from("addresses")
+          .select("id, label, line1, city, notes")
+          .eq("customer_profile_id", profileId);
+
+        const supabaseAddrs = (addrRows ?? []) as typeof addresses;
+        const supabaseIds = supabaseAddrs.map((a) => a.id);
+
+        // Push any local-only addresses (e.g. added while not signed in) up to Supabase
+        const localOnly = addresses.filter((a) => !supabaseIds.includes(a.id));
+        if (localOnly.length > 0) {
+          await supabase.from("addresses").insert(
+            localOnly.map((a) => ({
+              id: a.id,
+              customer_profile_id: profileId!,
+              label: a.label,
+              line1: a.line1,
+              city: a.city,
+              notes: a.notes ?? null,
+            })) as any
+          );
+        }
+
+        setAddresses([...supabaseAddrs, ...localOnly]);
+      }
 
       // 3. Load orders from localStorage IDs
       const ids = getSavedIds();
@@ -216,29 +245,20 @@ function AccountPage() {
 
   // ── Real-time order updates ───────────────────────────────────────────────
   useEffect(() => {
-    const ids = getSavedIds();
-    if (ids.length === 0) return;
-
     const channel = supabase
-      .channel("account-orders-realtime")
+      .channel("account-orders")
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "orders" },
         async (payload) => {
-          const updated = payload.new as any;
-          if (!ids.includes(updated.id)) return;
-
+          const updated = payload.new as DbOrder;
           setOrders((prev) =>
-            prev.map((o) =>
-              o.id === updated.id
-                ? { ...o, status: updated.status, rider_id: updated.rider_id ?? null }
-                : o
-            )
+            prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o))
           );
 
           if (updated.rider_id) {
             setRiders((prev) => {
-              if (prev[updated.rider_id]) return prev;
+              if (prev[updated.rider_id!]) return prev;
               return prev;
             });
             const { data } = await supabase

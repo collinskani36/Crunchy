@@ -105,6 +105,7 @@ type State = {
   setFavorites: (ids: string[]) => void;
   addAddress: (a: Omit<Address, "id">) => Address;
   removeAddress: (id: string) => void;
+  setAddresses: (addrs: Address[]) => void;
   placeOrder: (input: {
     address: Address;
     customerName: string;
@@ -289,14 +290,50 @@ export const useStore = create<State>()(
 
       setFavorites: (ids) => set({ favorites: ids }),
 
+      // Reads customerProfileId from store itself, same pattern as
+      // toggleFavorite: optimistic local update first, then fire-and-forget
+      // sync to the `addresses` table only when a customer_profile exists.
       addAddress: (a) => {
-        const addr: Address = { ...a, id: `a${Date.now()}` };
+        const { customerProfileId } = get();
+        const addr: Address = { ...a, id: crypto.randomUUID() };
+
         set((s) => ({ addresses: [...s.addresses, addr] }));
+
+        if (customerProfileId) {
+          supabase
+            .from("addresses")
+            .insert({
+              id: addr.id,
+              customer_profile_id: customerProfileId,
+              label: addr.label,
+              line1: addr.line1,
+              city: addr.city,
+              notes: addr.notes ?? null,
+            } as any)
+            .then(({ error }) => {
+              if (error) console.error("Failed to save address:", error);
+            });
+        }
+
         return addr;
       },
 
-      removeAddress: (id) =>
-        set((s) => ({ addresses: s.addresses.filter((a) => a.id !== id) })),
+      removeAddress: (id) => {
+        const { customerProfileId } = get();
+        set((s) => ({ addresses: s.addresses.filter((a) => a.id !== id) }));
+
+        if (customerProfileId) {
+          supabase
+            .from("addresses")
+            .delete()
+            .eq("id", id)
+            .then(({ error }) => {
+              if (error) console.error("Failed to delete address:", error);
+            });
+        }
+      },
+
+      setAddresses: (addrs) => set({ addresses: addrs }),
 
       placeOrder: ({ address, customerName, customerPhone }) => {
         const cart = get().cart;
