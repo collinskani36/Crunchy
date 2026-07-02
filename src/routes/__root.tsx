@@ -138,7 +138,7 @@ export const Route =
 
         {
           property: "og:image",
-          content: "https://myhotel-demo.vercel.app/preview.png",
+          content: "https://myhotel-demo.vercel.app/preview.jpg",
         },
 
         {
@@ -153,7 +153,7 @@ export const Route =
 
         {
           property: "og:image:type",
-          content: "image/png",
+          content: "image/jpg",
         },
 
         {
@@ -180,7 +180,7 @@ export const Route =
 
         {
           name: "twitter:image",
-          content: "https://myhotel-demo.vercel.app/preview.png",
+          content: "https://myhotel-demo.vercel.app/preview.jpg",
         },
       ],
 
