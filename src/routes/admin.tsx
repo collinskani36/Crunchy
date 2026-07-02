@@ -11,8 +11,9 @@ import {
 import { Logo } from "@/components/Logo";
 import { supabase } from "@/lib/supabaseClient";
 import { Capacitor } from "@capacitor/core";
+import { Haptics, ImpactStyle } from "@capacitor/haptics";
 
-async function registerAdminDeviceToken() {
+async function registerAdminDeviceToken(navigate: ReturnType<typeof useNavigate>) {
   // Only attempt this inside the actual Capacitor app, not the website
   if (!Capacitor.isNativePlatform()) return;
 
@@ -30,8 +31,23 @@ async function registerAdminDeviceToken() {
 
     if (!granted) return;
 
-    await PushNotifications.register();
+    // REQUIRED on Android 8+ (API 26+): if the FCM payload's channel_id
+    // doesn't correspond to a channel that exists on-device, the OS
+    // silently drops the notification entirely — no error, nothing.
+    // This must match "channel_id": "orders" set in the edge function.
+    await PushNotifications.createChannel({
+      id: "orders",
+      name: "New Orders",
+      description: "Notifications for new incoming orders",
+      importance: 5, // IMPORTANCE_HIGH — needed for heads-up + sound
+      visibility: 1,
+      sound: "default",
+      vibration: true,
+    });
 
+    // Listeners are attached BEFORE register() to avoid a race condition
+    // where the native "registration" event could fire before we're
+    // listening for it.
     PushNotifications.addListener("registration", async (token) => {
       const { error } = await supabase
         .from("device_tokens")
@@ -48,6 +64,36 @@ async function registerAdminDeviceToken() {
     PushNotifications.addListener("registrationError", (err) => {
       console.error("Push registration error:", err);
     });
+
+    // Fires when a push arrives while the app is OPEN (foreground).
+    // Android doesn't auto-show a system notification banner for
+    // foreground pushes, so this is also where you could show an
+    // in-app toast using notification.data.items_summary if desired.
+    PushNotifications.addListener("pushNotificationReceived", async (notification) => {
+      // Distinct double-buzz for "new order" — easier to notice without
+      // looking at the screen than a single generic tap.
+      await Haptics.impact({ style: ImpactStyle.Medium });
+      setTimeout(() => Haptics.impact({ style: ImpactStyle.Light }), 150);
+
+      console.log("Push received in foreground:", notification);
+    });
+
+    // Fires when the user TAPS the notification (app was backgrounded
+    // or closed). notification.data carries whatever was set in the
+    // edge function's dataPayload (order_id, items_summary, etc).
+    PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+      const orderId = action.notification.data?.order_id;
+      if (orderId) {
+        // Orders live on one list page (accordion rows, no separate detail
+        // route) — so we navigate there and pass the order id as a search
+        // param. The orders page auto-expands and scrolls to it.
+        navigate({ to: "/admin/orders", search: { highlight: orderId } });
+      } else {
+        navigate({ to: "/admin/orders" });
+      }
+    });
+
+    await PushNotifications.register();
   } catch (err) {
     console.error("Push notification setup failed:", err);
   }
@@ -95,7 +141,7 @@ function AdminLayout() {
       setSession(data.session);
       setLoading(false);
       if (data.session) {
-        registerAdminDeviceToken();
+        registerAdminDeviceToken(navigate);
       }
     });
 
@@ -104,12 +150,12 @@ function AdminLayout() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) {
-        registerAdminDeviceToken();
+        registerAdminDeviceToken(navigate);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [navigate]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();

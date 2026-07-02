@@ -16,5 +16,10 @@
     <!-- Splash background — white, seamless into landing page -->
     <color name="splashBackground">#FFFFFF</color>
 
-   
+    <!-- Used by FCM's default_notification_color meta-data in
+         AndroidManifest.xml — the OS tints the notification icon
+         silhouette with this color. Matches colorPrimary for brand
+         consistency. -->
+    <color name="notification_color">#B71C1C</color>
+
 </resources>

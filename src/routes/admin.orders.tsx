@@ -1,11 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { z } from "zod";
 import { formatPrice } from "@/lib/utils";
 import { STATUS_FLOW, STATUS_LABEL, type OrderStatus } from "@/lib/store";
 import { supabase } from "@/lib/supabaseClient";
 
+// Optional ?highlight=<orderId> search param — set when the admin taps a
+// "new order" push notification, so we know which row to auto-expand and
+// scroll to once orders have loaded.
+const ordersSearchSchema = z.object({
+  highlight: z.string().optional(),
+});
+
 export const Route = createFileRoute("/admin/orders")({
   component: AdminOrders,
+  validateSearch: ordersSearchSchema,
 });
 
 type OrderItem = {
@@ -388,15 +397,18 @@ function RiderPickerPanel({
 
 
 function AdminOrders() {
+  const { highlight } = Route.useSearch();
+
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [riders, setRiders] = useState<Rider[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(highlight ?? null);
   const [filterStatus, setFilterStatus] = useState<OrderStatus | "all">("all");
   const [riderPickerOrderId, setRiderPickerOrderId] = useState<string | null>(null); // orderId showing inline rider picker
   const [assigningRider, setAssigningRider] = useState(false);
+  const highlightedRowRef = useRef<HTMLDivElement | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -449,6 +461,19 @@ function AdminOrders() {
       supabase.removeChannel(channel);
     };
   }, [loadData]);
+
+  // Once orders have loaded, if we arrived via a notification tap
+  // (?highlight=<orderId>), make sure that row is expanded and scroll
+  // it into view.
+  useEffect(() => {
+    if (!highlight || loading || orders.length === 0) return;
+    setExpandedId(highlight);
+    // Give the expanded row a tick to render before scrolling to it.
+    const t = setTimeout(() => {
+      highlightedRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+    return () => clearTimeout(t);
+  }, [highlight, loading, orders.length]);
 
   async function handleStatusChange(orderId: string, newStatus: OrderStatus) {
     // When marking as "out_for_delivery", always open the rider picker
@@ -608,8 +633,11 @@ function AdminOrders() {
             return (
               <div
                 key={o.id}
+                ref={o.id === highlight ? highlightedRowRef : undefined}
                 className={`rounded-2xl border bg-card transition-shadow ${
                   isExpanded ? "border-border shadow-md" : "border-border hover:border-border-strong hover:shadow-sm"
+                } ${
+                  o.id === highlight ? "ring-2 ring-primary ring-offset-2" : ""
                 }`}
               >
                 {/* Row header — always visible */}
