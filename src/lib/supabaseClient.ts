@@ -6,4 +6,3 @@ export const supabase = createClient<Database>(
   import.meta.env.VITE_SUPABASE_ANON_KEY,
 );
 
-if (typeof window !== "undefined") (window as any).supabase = supabase;

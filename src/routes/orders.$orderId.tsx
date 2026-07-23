@@ -48,7 +48,7 @@ type DbOrder = {
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute("/orders/$orderId")({
-  head: () => ({ meta: [{ title: `Order — Crunchy Inn` }] }),
+  head: () => ({ meta: [{ title: `Order — Afrikaana` }] }),
   component: OrderDetail,
 });
 

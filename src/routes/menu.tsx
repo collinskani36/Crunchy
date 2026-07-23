@@ -20,7 +20,7 @@ export const Route = createFileRoute("/menu")({
   }),
   head: () => ({
     meta: [
-      { title: "Menu — Crunchy Inn" },
+      { title: "Menu — Afrikaana" },
       {
         name: "description",
         content:

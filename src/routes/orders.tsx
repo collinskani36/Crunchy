@@ -106,7 +106,7 @@ export async function fetchRidersForOrders(
 // ── route ─────────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute("/orders")({
-  head: () => ({ meta: [{ title: "Your orders — Crunchy Inn" }] }),
+  head: () => ({ meta: [{ title: "Your orders — Afrikaana" }] }),
   component: OrdersPage,
 });
 

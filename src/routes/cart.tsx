@@ -5,7 +5,7 @@ import { formatPrice } from "@/lib/utils";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/cart")({
-  head: () => ({ meta: [{ title: "Your cart — Crunchy Inn" }] }),
+  head: () => ({ meta: [{ title: "Your cart — Afrikaana" }] }),
   component: CartPage,
 });
 

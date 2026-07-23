@@ -101,7 +101,7 @@ async function registerAdminDeviceToken(navigate: ReturnType<typeof useNavigate>
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
-    meta: [{ title: "Admin — Crunchy Inn" }],
+    meta: [{ title: "Admin — Afrikaana" }],
   }),
   component: AdminLayout,
 });

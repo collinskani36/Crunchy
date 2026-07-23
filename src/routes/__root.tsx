@@ -100,24 +100,24 @@ export const Route =
         },
 
         {
-          title: "Crunchy Inn | Order Delicious Fast Food Online",
+          title: "Afrikaana Hotel | Order Delicious Fast Food Online",
         },
 
         {
           name: "description",
           content:
-            "Order delicious burgers, crispy fried chicken, pizza, fries, wraps and refreshing drinks from Crunchy Inn.",
+            "Order delicious burgers, crispy fried chicken, pizza, fries, wraps and refreshing drinks from Afrikaana.",
         },
 
         {
           name: "author",
-          content: "Crunchy Inn",
+          content: "Afrikaana",
         },
 
         // Open Graph
         {
           property: "og:title",
-          content: "Crunchy Inn 🍔",
+          content: "Afrikaana Hotel 🍔",
         },
 
         {
@@ -158,7 +158,7 @@ export const Route =
 
         {
           property: "og:site_name",
-          content: "Crunchy Inn",
+          content: "Afrikaana Hotel",
         },
 
         // Twitter / X
@@ -169,7 +169,7 @@ export const Route =
 
         {
           name: "twitter:title",
-          content: "Crunchy Inn 🍔",
+          content: "Afrikaana 🍔",
         },
 
         {

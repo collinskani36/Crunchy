@@ -5,7 +5,7 @@ import { useStore, CUSTOMER_ID_KEY, setCustomerId } from "@/lib/store";
 import { supabase } from "@/lib/supabaseClient";
 
 export const Route = createFileRoute("/login")({
-  head: () => ({ meta: [{ title: "Sign in — Crunchy Inn" }] }),
+  head: () => ({ meta: [{ title: "Sign in — Afrikaana" }] }),
   component: LoginPage,
 });
 
@@ -148,7 +148,7 @@ function LoginPage() {
           <h2 className="text-4xl font-bold leading-tight">Welcome to the freshest grill in town.</h2>
           <p className="mt-3 text-white/80">Sign in to track orders, save addresses and earn rewards.</p>
         </div>
-        <p className="text-xs text-white/60">© Crunchy Inn 2026</p>
+        <p className="text-xs text-white/60">© Afrikaana 2026</p>
       </div>
 
       <div className="flex flex-col justify-center px-6 py-12 md:px-16">

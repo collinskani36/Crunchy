@@ -7,7 +7,7 @@ export function Logo({ className = "" }: { className?: string }) {
         <Flame className="h-5 w-5" strokeWidth={2.5} />
       </span>
       <span className="text-xl tracking-tight">
-        Crunchy<span className="text-primary">Inn</span>
+        Afrikaana<span className="text-primary"></span>
       </span>
     </div>
   );

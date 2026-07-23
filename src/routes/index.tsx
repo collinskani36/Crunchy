@@ -86,9 +86,9 @@ function mapCategory(row: DbCategory, index: number): AppCategory {
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Crunchy Inn — Fresh food, fast delivery" },
+      { title: "Afrikaana Hotel — Fresh food, fast delivery" },
       { name: "description", content: "Order flame-grilled meals, burgers, and healthy bowls delivered hot in 30 minutes." },
-      { property: "og:title", content: "Crunchy Inn — Fresh food, fast delivery" },
+      { property: "og:title", content: "Afrikaana— Fresh food, fast delivery" },
       { property: "og:description", content: "Order flame-grilled meals, burgers, and healthy bowls delivered hot in 30 minutes." },
     ],
   }),
